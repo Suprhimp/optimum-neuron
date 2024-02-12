@@ -13,10 +13,10 @@ from transformers import AutoTokenizer
 from optimum.neuron import NeuronModelForCausalLM
 
 
-MODEL_ID = "gpt2"
+MODEL_ID = "meta-llama/Llama-2-7b-chat-hf"
 BATCH_SIZE = 4
-SEQUENCE_LENGTH = 1024
-NUM_CORES = 2
+SEQUENCE_LENGTH = 2048
+NUM_CORES = 8
 
 
 @pytest.fixture(scope="module")
@@ -24,7 +24,8 @@ def model_path():
     with TemporaryDirectory() as tmpdir:
         AutoTokenizer.from_pretrained(MODEL_ID).save_pretrained(tmpdir)
         model = NeuronModelForCausalLM.from_pretrained(
-            MODEL_ID, export=True, batch_size=BATCH_SIZE, sequence_length=SEQUENCE_LENGTH, num_cores=NUM_CORES
+            MODEL_ID, export=True, batch_size=BATCH_SIZE, sequence_length=SEQUENCE_LENGTH, num_cores=NUM_CORES,
+            auto_cast_type="fp16"
         )
         model.save_pretrained(tmpdir)
         yield tmpdir
@@ -145,7 +146,7 @@ def test_decode_multiple(model_path):
     generator = NeuronGenerator.from_pretrained(model_path)
     assert generator.model.batch_size > 1
     input_text = "Once upon a time"
-    max_new_tokens = 20
+    max_new_tokens = 256
     # Prefill a single request, remembering the generated token
     tokens = {0: [], 1: []}
     request = create_request(id=0, inputs=input_text, max_new_tokens=max_new_tokens)
@@ -157,7 +158,7 @@ def test_decode_multiple(model_path):
     tokens[g.request_id].append(g.tokens.ids[0])
     assert len(tokens[0]) == 1
     # Decode a few tokens
-    gen_tokens = 4
+    gen_tokens = 218
     for _ in range(gen_tokens - 1):
         generations, next_batch = generator.decode([next_batch])
         assert len(generations) == 1
@@ -203,5 +204,6 @@ def test_decode_multiple(model_path):
     assert next_batch is None
     output = generations[0].generated_text
     assert output.generated_tokens == max_new_tokens
+    print(generated_text, output.text)
     assert tokens[0] == tokens[1]
     assert output.text == generated_text
