@@ -688,7 +688,7 @@ class NeuronModelForCausalLM(NeuronDecoderModel, GenerationMixin):
         return (out_logits,)
 
     def prepare_inputs_for_prefill(
-        self, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor] = None, **kwargs
+        self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **kwargs
     ) -> Dict[str, torch.Tensor]:
         # convert attention_mask to start_ids
         start_ids = None
@@ -706,7 +706,7 @@ class NeuronModelForCausalLM(NeuronDecoderModel, GenerationMixin):
         return model_inputs
 
     def prepare_inputs_for_decode(
-        self, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor] = None, **kwargs
+        self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **kwargs
     ) -> Dict[str, torch.Tensor]:
         # convert attention_mask to start_ids
         start_ids = None
@@ -788,7 +788,7 @@ class NeuronModelForCausalLM(NeuronDecoderModel, GenerationMixin):
                 f"The input sequence length ({sequence_length}) exceeds the model static sequence length ({self.max_length})"
             )
         padded_input_ids = input_ids
-        padded_attention_mask = attention_mask
+        padded_attention_mask = torch.ones_like(input_ids) if attention_mask is None else attention_mask
         if batch_size > self.batch_size:
             raise ValueError(
                 f"The specified batch_size ({batch_size}) exceeds the model static batch size ({self.batch_size})"
@@ -798,9 +798,8 @@ class NeuronModelForCausalLM(NeuronDecoderModel, GenerationMixin):
             padding_shape = [self.batch_size - batch_size, sequence_length]
             padding = torch.full(padding_shape, fill_value=self.config.eos_token_id, dtype=torch.int64)
             padded_input_ids = torch.cat([input_ids, padding])
-            if attention_mask is not None:
-                padding = torch.zeros(padding_shape, dtype=torch.int64)
-                padded_attention_mask = torch.cat([attention_mask, padding])
+            padding = torch.zeros(padding_shape, dtype=torch.int64)
+            padded_attention_mask = torch.cat([attention_mask, padding])
         # Drop the current generation context and clear the Key/Value cache
         self.reset_generation()
 
