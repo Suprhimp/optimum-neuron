@@ -41,7 +41,9 @@ test_prompts = [
     "[INST] What are the 2 things every sandwich has in common? [/INST]",
     "[INST] What are 6 common condiments for a sandwich? [/INST]",
 ]
-input_tokens = tokenizer(test_prompts)
+tokenizer.padding_side = "left"
+tokenizer.pad_token_id = eos_token_id
+input_tokens = tokenizer(test_prompts, padding=True)
 all_input_ids, all_attention_masks = input_tokens["input_ids"], input_tokens["attention_mask"]
 
 
@@ -52,7 +54,7 @@ def _pad_to_max(x):
     for item in x:
         max_len = max(max_len, len(item))
     for idx, item in enumerate(x):
-        x[idx] = x[idx] + [0] * (max_len - len(x[idx]))
+        x[idx] = [0] * (max_len - len(x[idx])) + x[idx]
     return x
 
 
@@ -68,7 +70,12 @@ input_ids = torch.tensor(_pad_to_max(input_ids))
 attention_mask = torch.tensor(_pad_to_max(attention_mask))
 seq_ids = torch.arange(n_active_seqs)
 batch_size, context_len = input_ids.shape
-cache_ids = torch.arange(context_len).reshape(1, context_len).expand(n_active_seqs, context_len).mul(attention_mask)
+cache_ids = torch.zeros_like(input_ids)
+_, first_ids = attention_mask.max(axis=1)
+for i in range(batch_size):
+    first_id = first_ids[i]
+    cache_ids[i, first_id:] = torch.arange(context_len - first_id)
+breakpoint()
 
 # The first prompt encoding
 with torch.inference_mode():
