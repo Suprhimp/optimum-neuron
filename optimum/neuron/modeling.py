@@ -687,7 +687,7 @@ class NeuronModelForCausalLM(NeuronDecoderModel, GenerationMixin):
             return ModelOutput([("logits", out_logits)])
         return (out_logits,)
 
-    def prepare_inputs_for_generation(
+    def prepare_inputs_for_prefill(
         self, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor] = None, **kwargs
     ) -> Dict[str, torch.Tensor]:
         # convert attention_mask to start_ids
@@ -695,14 +695,28 @@ class NeuronModelForCausalLM(NeuronDecoderModel, GenerationMixin):
         if attention_mask is not None:
             _, start_ids = attention_mask.max(axis=1)
 
-        if self.cur_len > 0:
-            # Only pass the last tokens of each sample
-            input_ids = input_ids[:, -1:]
-            # Specify the single index at which the new keys and values need to be stored
-            cache_ids = torch.as_tensor([self.cur_len], dtype=torch.int32)
-        else:
-            # cache_ids will be set directly by the parallel context encoding code
-            cache_ids = None
+        # Increment the current cache index
+        self.cur_len += input_ids.shape[-1]
+        model_inputs = {
+            "input_ids": input_ids,
+            "cache_ids": None,
+            "start_ids": start_ids,
+        }
+
+        return model_inputs
+
+    def prepare_inputs_for_decode(
+        self, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor] = None, **kwargs
+    ) -> Dict[str, torch.Tensor]:
+        # convert attention_mask to start_ids
+        start_ids = None
+        if attention_mask is not None:
+            _, start_ids = attention_mask.max(axis=1)
+
+        # Only pass the last tokens of each sample
+        input_ids = input_ids[:, -1:]
+        # Specify the single index at which the new keys and values need to be stored
+        cache_ids = torch.as_tensor([self.cur_len], dtype=torch.int32)
 
         # Increment the current cache index
         self.cur_len += input_ids.shape[-1]
@@ -830,17 +844,15 @@ class NeuronModelForCausalLM(NeuronDecoderModel, GenerationMixin):
         unfinished_sequences = torch.zeros(input_ids.shape[0], dtype=torch.long, device=input_ids.device)
         unfinished_sequences[:batch_size] = 1
 
+        # Prefill and obtain the first token
+        model_inputs = self.prepare_inputs_for_prefill(input_ids, attention_mask, **model_kwargs)
+        outputs = self(
+            **model_inputs,
+            return_dict=True,
+        )
+
         # auto-regressive generation
         while True:
-            # prepare model inputs
-            model_inputs = self.prepare_inputs_for_generation(input_ids, attention_mask, **model_kwargs)
-
-            # forward pass to get next token
-            outputs = self(
-                **model_inputs,
-                return_dict=True,
-            )
-
             next_token_logits = outputs.logits[:, -1, :]
 
             next_tokens = selector.select(input_ids, next_token_logits)
@@ -865,5 +877,12 @@ class NeuronModelForCausalLM(NeuronDecoderModel, GenerationMixin):
             # stop if we exceed the maximum length
             if selector.stopping_criteria(input_ids, None):
                 break
+
+            # forward pass to get next token
+            model_inputs = self.prepare_inputs_for_decode(input_ids, attention_mask, **model_kwargs)
+            outputs = self(
+                **model_inputs,
+                return_dict=True,
+            )
 
         return input_ids
