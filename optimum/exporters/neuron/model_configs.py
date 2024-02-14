@@ -427,6 +427,7 @@ class GPT2NeuronConfig(TextNeuronDecoderConfig):
 @register_in_tasks_manager("llama", "text-generation")
 class LLamaNeuronConfig(TextNeuronDecoderConfig):
     NEURONX_CLASS = "llama.model.LlamaForSampling"
+    CONTINUOUS_BATCHING = True
 
 
 @register_in_tasks_manager("t5-encoder", "text2text-generation")
@@ -529,3 +530,4 @@ class T5DecoderNeuronConfig(TextSeq2SeqNeuronConfig):
 @register_in_tasks_manager("mistral", "text-generation")
 class MistralNeuronConfig(TextNeuronDecoderConfig):
     NEURONX_CLASS = "mistral.model.MistralForSampling"
+    CONTINUOUS_BATCHING = True
