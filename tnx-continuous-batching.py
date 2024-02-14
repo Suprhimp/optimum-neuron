@@ -2,36 +2,36 @@ import os
 
 import torch
 from transformers import AutoTokenizer
-from transformers.models.mistral import MistralForCausalLM
+from transformers.models.llama import LlamaForCausalLM
 from transformers_neuronx.config import ContinuousBatchingConfig, NeuronConfig
-from transformers_neuronx.mistral.model import MistralForSampling
+from transformers_neuronx.llama.model import LlamaForSampling
 from transformers_neuronx.module import save_pretrained_split
 from transformers_neuronx.sampling import select_tokens
 
 
-model_name_or_path = "mistralai/Mistral-7B-Instruct-v0.1"
+model_name_or_path = "meta-llama/Llama-2-7b-chat-hf"
 
 if not os.path.exists(f"{model_name_or_path}-split"):
 
-    hf_model = MistralForCausalLM.from_pretrained(model_name_or_path, low_cpu_mem_usage=True)
+    hf_model = LlamaForCausalLM.from_pretrained(model_name_or_path, low_cpu_mem_usage=True)
     save_pretrained_split(hf_model, f"{model_name_or_path}-split")
 
 
-max_model_len = 128
-max_num_seqs = 2
-tp_degree = 2
+max_model_len = 2048
+max_num_seqs = 4
+tp_degree = 8
 
 continuous_batching_config = ContinuousBatchingConfig(batch_size_for_shared_caches=max_num_seqs)
 neuron_config = NeuronConfig(continuous_batching=continuous_batching_config)
 kwargs = {
     "tp_degree": tp_degree,
-    "amp": "f32",
+    "amp": "f16",
     "neuron_config": neuron_config,
     "context_length_estimate": [max_model_len],
     "n_positions": [max_model_len],
     "batch_size": max_num_seqs,
 }
-neuron_model = MistralForSampling.from_pretrained(f"{model_name_or_path}-split", **kwargs)
+neuron_model = LlamaForSampling.from_pretrained(f"{model_name_or_path}-split", **kwargs)
 neuron_model.to_neuron()
 
 tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
@@ -105,10 +105,12 @@ finished_seq_ids = torch.concat(torch.where(next_tokens.flatten() == eos_token_i
 finished_seq_tokens = all_input_ids[finished_seq_ids] + output_tokens[finished_seq_ids]
 print(f"Finished sequence: {tokenizer.batch_decode(torch.tensor([finished_seq_tokens]))}")
 
-# Also, the unfinished sequence.
+# Also, the unfinished sequences.
 unfinished_seq_ids = torch.concat(torch.where(next_tokens.flatten() != eos_token_id))
-unfinished_seq_tokens = all_input_ids[unfinished_seq_ids] + output_tokens[unfinished_seq_ids]
-print(f"Unfinished sequence: {tokenizer.batch_decode(torch.tensor([unfinished_seq_tokens]))}")
+unfinished_seq_tokens = [all_input_ids[id] + output_tokens[id] for id in unfinished_seq_ids]
+print("Unfinished sequences:")
+for tokens in unfinished_seq_tokens:
+    print(tokenizer.batch_decode(torch.tensor([tokens])))
 
 # %% [markdown]
 # ## Insert a prompt encoding task
