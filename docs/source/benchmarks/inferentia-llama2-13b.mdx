@@ -25,6 +25,7 @@ For this benchmark we will use the following configurations:
 | Llama2 13b BS1  | 1          | 4096            |
 | Llama2 13b BS4  | 4          | 4096            |
 | Llama2 13b BS8  | 8          | 4096            |
+| Llama2 13b BS16 | 16         | 4096            |
 
 *Note: all models are compiled to use the full extent of cores available on the `inf2.48xlarge` instance.*
 
@@ -43,7 +44,7 @@ while 768 is more typical of a Retrieval Augmented Generation (RAG) use-case.
 
 Encoding time is expressed in **seconds**.
 
-![Llama2 13b inferentia2 encoding-time](https://raw.githubusercontent.com/huggingface/optimum-neuron/main/docs/assets/benchmarks/inferentia-llama2-7b/encoding_times.png "Encoding time")
+![Llama2 13b inferentia2 encoding-time](https://raw.githubusercontent.com/huggingface/optimum-neuron/main/docs/assets/benchmarks/inferentia-llama2-13b/encoding_times.png "Encoding time")
 
 ## End-to-end Latency
 
@@ -53,7 +54,7 @@ It therefore includes the encoding and generation time.
 
 Latency is expressed in **seconds**.
 
-![Llama2 13b inferentia2 end-to-end latency](https://raw.githubusercontent.com/huggingface/optimum-neuron/main/docs/assets/benchmarks/inferentia-llama2-7b/latencies.png "Latency")
+![Llama2 13b inferentia2 end-to-end latency](https://raw.githubusercontent.com/huggingface/optimum-neuron/main/docs/assets/benchmarks/inferentia-llama2-13b/latencies.png "Latency")
 
 ### Throughput
 
@@ -63,4 +64,4 @@ In other words, we divide the end-to-end latency by `batch_size * sequence_lengt
 
 Throughput is expressed in **tokens/second**.
 
-![Llama2 13b inferentia2 throughput](https://raw.githubusercontent.com/huggingface/optimum-neuron/main/docs/assets/benchmarks/inferentia-llama2-7b/throughputs.png "Throughput")
+![Llama2 13b inferentia2 throughput](https://raw.githubusercontent.com/huggingface/optimum-neuron/main/docs/assets/benchmarks/inferentia-llama2-13b/throughputs.png "Throughput")
