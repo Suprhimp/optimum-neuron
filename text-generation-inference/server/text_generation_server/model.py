@@ -1,4 +1,5 @@
 import os
+import shutil
 import time
 from typing import Optional
 
@@ -97,15 +98,27 @@ def fetch_model(
         raise ValueError(error_msg)
     # Export the model
     logger.warning(f"{model_id} is not a neuron model: it will be exported using cached artifacts.")
+    # Check disk
+    data_stat = shutil.disk_usage("/data")
+    logger.info(f"/data: {data_stat}")
     start = time.time()
     logger.info(f"Fetching revision {revision} of model {model_id}.")
     model_path = snapshot_download(model_id, revision=revision)
     end = time.time()
     logger.info(f"Model successfully fetched in {end - start:.2f} s.")
+    data_stat = shutil.disk_usage("/data")
+    tmp_stat = shutil.disk_usage("/tmp")
+    logger.info(f"/data: {data_stat}")
+    logger.info(f"/tmp: {tmp_stat}")
     logger.info(f"Exporting model to neuron with config {neuron_config}.")
     start = time.time()
     model = NeuronModelForCausalLM.from_pretrained(model_path, export=True, **export_kwargs)
+    data_stat = shutil.disk_usage("/data")
+    tmp_stat = shutil.disk_usage("/tmp")
+    logger.info(f"/data: {data_stat}")
+    logger.info(f"/tmp: {tmp_stat}")
     # Save for later retrieval
+    logger.info(f"Saving to {export_path}")
     model.save_pretrained(export_path)
     end = time.time()
     # We also need to fetch and save the tokenizer

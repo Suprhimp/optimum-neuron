@@ -18,6 +18,7 @@ import copy
 import logging
 import os
 import shutil
+import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Optional, Tuple, Union
@@ -151,6 +152,8 @@ class NeuronDecoderModel(OptimizedModel):
         cache_entry = None if checkpoint_id is None else ModelCacheEntry(checkpoint_id, config)
 
         # Export the model using the Optimum Neuron Cache
+        logger.info("CREATING COMPILATION ARTIFACTS")
+        start = time.time()
         with hub_neuronx_cache(entry=cache_entry):
             available_cores = get_available_cores()
             if num_cores > available_cores:
@@ -167,6 +170,8 @@ class NeuronDecoderModel(OptimizedModel):
                 os.environ.pop("NEURON_RT_NUM_CORES")
             else:
                 os.environ["NEURON_RT_NUM_CORES"] = neuron_rt_num_cores
+        end = time.time()
+        logger.info(f"Model successfully compiled in {end - start:.2f} s.")
 
         super().__init__(neuronx_model, config)
 
@@ -300,12 +305,16 @@ class NeuronDecoderModel(OptimizedModel):
         )
 
         # Instantiate the transformers model checkpoint
+        logger.info("CREATING CHECKPOINT")
+        start = time.time()
         checkpoint_dir = cls._create_checkpoint(
             model_id,
             task=new_config.neuron["task"],
             revision=revision,
             **kwargs,
         )
+        end = time.time()
+        logger.info(f"CHECKPOINT CREATED IN {end - start:.2f} s")
 
         # Try to reload the generation config (if any)
         generation_config = None
