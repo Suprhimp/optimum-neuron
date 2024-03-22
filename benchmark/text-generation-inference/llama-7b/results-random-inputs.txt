@@ -1,0 +1,60 @@
+
+          /\      |‾‾| /‾‾/   /‾‾/
+     /\  /  \     |  |/  /   /  /
+    /  \/    \    |     (   /   ‾‾\
+   /          \   |  |\  \ |  (‾)  |
+  / __________ \  |__| \__\ \_____/ .io
+
+     execution: local
+        script: tgi.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 96 max VUs, 5m30s max duration (incl. graceful stop):
+              * load_test: 96 looping VUs for 5m0s (gracefulStop: 30s)
+
+
+     ✓ Post status is 200
+
+     checks.........................: 100.00% ✓ 984         ✗ 0
+     data_received..................: 36 MB   109 kB/s
+     data_sent......................: 2.0 MB  6.1 kB/s
+     http_req_blocked...............: avg=36.74µs  min=1.27µs  med=3.13µs   max=1.94ms p(90)=14.96µs  p(95)=237.96µs
+     http_req_connecting............: avg=17.6µs   min=0s      med=0s       max=1.06ms p(90)=0s       p(95)=117.24µs
+     http_req_duration..............: avg=30.57s   min=1.63s   med=38.79s   max=59.8s  p(90)=46.56s   p(95)=48.68s
+       { expected_response:true }...: avg=30.57s   min=1.63s   med=38.79s   max=59.8s  p(90)=46.56s   p(95)=48.68s
+   ✓ http_req_failed................: 0.00%   ✓ 0           ✗ 984
+     http_req_receiving.............: avg=139.91µs min=35.15µs med=118.75µs max=3.11ms p(90)=214.28µs p(95)=248.1µs
+     http_req_sending...............: avg=54.39µs  min=8.9µs   med=27.18µs  max=2.99ms p(90)=72.72µs  p(95)=108.33µs
+     http_req_tls_handshaking.......: avg=0s       min=0s      med=0s       max=0s     p(90)=0s       p(95)=0s
+     http_req_waiting...............: avg=30.57s   min=1.63s   med=38.79s   max=59.8s  p(90)=46.56s   p(95)=48.68s
+     http_reqs......................: 984     3.011806/s
+     input_tokens...................: 655730  2007.044544/s
+     iteration_duration.............: avg=30.58s   min=1.63s   med=38.79s   max=59.8s  p(90)=46.56s   p(95)=48.68s
+     iterations.....................: 984     3.011806/s
+     new_tokens.....................: 166921  510.908274/s
+     time_per_token.................: avg=1.47s    min=95.15ms med=179.96ms max=26.24s p(90)=5.97s    p(95)=8.58s
+     tokens.........................: 822651  2517.952818/s
+     vus............................: 3       min=3         max=96
+     vus_max........................: 96      min=96        max=96
+
+{'avg_time_per_token': 345.32418971646337,
+ 'decode_throughput': 280.2708770021783,
+ 'mean_input_tokens': 482.1341463414634,
+ 'prefill_throughput': 1217.4129324994726,
+ 'requests': 328.0,
+ 'throughput': 653.08420217536,
+ 'time_to_first_token': 6.832458088957317}
+{'avg_time_per_token': 372.6802014664635,
+ 'decode_throughput': 293.18291083484485,
+ 'mean_input_tokens': 436.4024390243902,
+ 'prefill_throughput': 1101.9327357964755,
+ 'requests': 328.0,
+ 'throughput': 620.4197581749146,
+ 'time_to_first_token': 4.213163672682927}
+{'avg_time_per_token': 362.697254387195,
+ 'decode_throughput': 286.67172872650036,
+ 'mean_input_tokens': 484.1737804878049,
+ 'prefill_throughput': 1222.9177190579305,
+ 'requests': 328.0,
+ 'throughput': 661.4443702952365,
+ 'time_to_first_token': 6.0114176796798775}
