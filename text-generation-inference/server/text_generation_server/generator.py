@@ -151,6 +151,7 @@ class Slot:
         """
         self._state = Slot.State.READY
         self._request_id = request.id
+        self.prefill_logprobs = request.prefill_logprobs
         self._inputs = request.inputs
         self._generation_config = copy.deepcopy(generation_config)
         # Update generation config with request parameters
@@ -493,10 +494,29 @@ class NeuronGenerator(Generator):
                 slot.clear()
             else:
                 active_slots = True
+            prefill_tokens = None
+            if slot.generated_tokens == 1 and slot.prefill_logprobs:
+                # Create prefill_tokens
+                input_tokens = slot._tokens.numel() - 1
+                prefill_token_ids = slot._tokens[:input_tokens]
+                prefill_texts = self.tokenizer.batch_decode(
+                    prefill_token_ids,
+                    clean_up_tokenization_spaces=False,
+                    skip_special_tokens=False,
+                )
+                prefill_logprobs = [
+                    0,
+                ] * input_tokens
+                prefill_tokens = Tokens(
+                    ids=prefill_token_ids,
+                    logprobs=prefill_logprobs,
+                    texts=prefill_texts,
+                    is_special=[],
+                )
             generations.append(
                 Generation(
                     request_id=request_id,
-                    prefill_tokens=None,
+                    prefill_tokens=prefill_tokens,
                     tokens=Tokens(
                         ids=[next_token],
                         logprobs=[0],
