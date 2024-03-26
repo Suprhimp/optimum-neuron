@@ -38,6 +38,7 @@ export function get_options(){
 
 export function run(host, vu, generate_payload, max_new_tokens) {
     const headers = {'Content-Type': 'application/json'};
+    const timeout = '300s'
     let prompt = ''
     if (random_input) {
         prompt = randomItem(samples);
@@ -47,6 +48,7 @@ export function run(host, vu, generate_payload, max_new_tokens) {
     const payload = JSON.stringify(generate_payload(prompt));
     const res = http.post(`http://${host}/generate`, payload, {
         headers,
+        timeout
     });
     if (res.status >= 400 && res.status < 500) {
         return;
