@@ -159,6 +159,11 @@ def get_stable_diffusion_models_for_export(
         `Dict[str, Tuple[Union[`PreTrainedModel`, `ModelMixin`], `NeuronConfig`]: A Dict containing the model and
         Neuron configs for the different components of the model.
     """
+    print('load_lora!!!!')
+    pipeline.load_lora_weights("Planningo/detail-tweaker-XL", weight_name="add-detail-xl.safetensors")
+            # For tracing the lora weights, we need to use PEFT to fuse adapters directly into the model weights. It won't work by passing the lora scale to the Neuron pipeline during the inference.
+    pipeline.fuse_lora(lora_scale=1.4596)
+
     models_for_export = _get_submodels_for_export_stable_diffusion(pipeline=pipeline, task=task)
 
     # Text encoders
