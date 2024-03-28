@@ -50,7 +50,6 @@ if is_neuronx_available():
 if is_diffusers_available():
     from diffusers import (
         DDIMScheduler,
-        LCMScheduler,
         LMSDiscreteScheduler,
         PNDMScheduler,
         StableDiffusionPipeline,
@@ -92,7 +91,7 @@ class NeuronStableDiffusionPipelineBase(NeuronBaseModel):
         vae_decoder: Union[torch.jit._script.ScriptModule, "NeuronModelVaeDecoder"],
         config: Dict[str, Any],
         tokenizer: CLIPTokenizer,
-        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler, LCMScheduler],
+        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
         data_parallel_mode: str,
         vae_encoder: Optional[Union[torch.jit._script.ScriptModule, "NeuronModelVaeEncoder"]] = None,
         text_encoder_2: Optional[Union[torch.jit._script.ScriptModule, "NeuronModelTextEncoder"]] = None,
@@ -195,10 +194,6 @@ class NeuronStableDiffusionPipelineBase(NeuronBaseModel):
         self.tokenizer = tokenizer
         self.tokenizer_2 = tokenizer_2
         self.scheduler = scheduler
-        self.is_lcm = False
-        if NeuronStableDiffusionPipelineBase.is_lcm(self.unet.config):
-            self.is_lcm = True
-            self.scheduler = LCMScheduler.from_config(self.scheduler.config)
         self.feature_extractor = feature_extractor
         self.safety_checker = None
         sub_models = {
@@ -234,12 +229,6 @@ class NeuronStableDiffusionPipelineBase(NeuronBaseModel):
             self.num_images_per_prompt = 1
 
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
-
-    @staticmethod
-    def is_lcm(unet_config):
-        patterns = ["lcm", "latent-consistency"]
-        unet_name_or_path = getattr(unet_config, "_name_or_path", "").lower()
-        return any(pattern in unet_name_or_path for pattern in patterns)
 
     @staticmethod
     def load_model(
@@ -313,14 +302,6 @@ class NeuronStableDiffusionPipelineBase(NeuronBaseModel):
 
         return submodels
 
-    @staticmethod
-    def set_default_dp_mode(unet_config):
-        if NeuronStableDiffusionPipelineBase.is_lcm(unet_config) is True:
-            # LCM applies guidance using guidance embeddings, so we can load the whole pipeline into both cores.
-            return "all"
-        else:
-            # Load U-Net into both cores for classifier-free guidance which doubles batch size of inputs passed to the U-Net.
-            return "unet"
 
     def _save_pretrained(
         self,
@@ -491,8 +472,7 @@ class NeuronStableDiffusionPipelineBase(NeuronBaseModel):
                 configs[name] = model_config
                 neuron_configs[name] = cls._neuron_config_init(model_config)
 
-        if data_parallel_mode is None:
-            data_parallel_mode = cls.set_default_dp_mode(configs["unet"])
+        
 
         pipe = cls.load_model(
             data_parallel_mode=data_parallel_mode,
