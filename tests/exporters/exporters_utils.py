@@ -19,10 +19,11 @@ EXPORT_MODELS_TINY = {
     "bert": "hf-internal-testing/tiny-random-BertModel",
     "camembert": "hf-internal-testing/tiny-random-camembert",
     "convbert": "hf-internal-testing/tiny-random-ConvBertModel",
-    # "deberta": "hf-internal-testing/tiny-random-DebertaModel",  # Failed for INF1: 'XSoftmax'
-    # "deberta-v2": "hf-internal-testing/tiny-random-DebertaV2Model",  # Failed for INF1: 'XSoftmax'
+    "deberta": "hf-internal-testing/tiny-random-DebertaModel",  # Failed for INF1: 'XSoftmax'
+    "deberta-v2": "hf-internal-testing/tiny-random-DebertaV2Model",  # Failed for INF1: 'XSoftmax'
     "distilbert": "hf-internal-testing/tiny-random-DistilBertModel",
     "electra": "hf-internal-testing/tiny-random-ElectraModel",
+    "esm": "hf-internal-testing/tiny-random-EsmModel",
     "flaubert": "flaubert/flaubert_small_cased",
     "mobilebert": "hf-internal-testing/tiny-random-MobileBertModel",
     "mpnet": "hf-internal-testing/tiny-random-MPNetModel",
@@ -32,9 +33,30 @@ EXPORT_MODELS_TINY = {
     "xlm-roberta": "hf-internal-testing/tiny-xlm-roberta",
 }
 
-STABLE_DIFFUSION_MODELS_TINY = {
-    "stable-diffusion": ["hf-internal-testing/tiny-stable-diffusion-torch"],
-    "stable-diffusion-xl": ["echarlaix/tiny-random-stable-diffusion-xl"],
+ENCODER_DECODER_MODELS_TINY = {
+    "t5": "hf-internal-testing/tiny-random-t5",
 }
+
+STABLE_DIFFUSION_MODELS_TINY = {
+    "stable-diffusion": "hf-internal-testing/tiny-stable-diffusion-torch",
+    "stable-diffusion-xl": "echarlaix/tiny-random-stable-diffusion-xl",
+    "latent-consistency": "echarlaix/tiny-random-latent-consistency",
+}
+
+LORA_WEIGHTS_TINY = {
+    "stable-diffusion": ("Jingya/tiny-stable-diffusion-lora-64", "pytorch_lora_weights.safetensors", "pokemon"),
+}
+
+SENTENCE_TRANSFORMERS_MODELS = {
+    "transformer": "sentence-transformers/all-MiniLM-L6-v2",
+    "clip": "sentence-transformers/clip-ViT-B-32",
+}
+
+EXTREA_DEFAULT_DUMMY_SHAPES = {
+    "text_batch_size": 1,
+    "image_batch_size": 1,
+}
+
+WEIGHTS_NEFF_SEPARATION_UNSUPPORTED_ARCH = ["camembert", "roberta"]
 
 SEED = 42

@@ -293,7 +293,7 @@ class NeuronStableDiffusionXLImg2ImgPipelineMixin(StableDiffusionXLPipelineMixin
         >>> compiler_args = {"auto_cast": "matmul", "auto_cast_type": "bf16"}
         >>> input_shapes = {"batch_size": 1, "height": 512, "width": 512}
         >>> pipeline = NeuronStableDiffusionXLImg2ImgPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-xl-base-1.0", export=True, **compiler_args, **input_shapes, device_ids=[0, 1]
+        ...     "stabilityai/stable-diffusion-xl-base-1.0", export=True, **compiler_args, **input_shapes,
         ... )
         >>> pipeline.save_pretrained("sdxl_img2img/")
 
@@ -340,12 +340,16 @@ class NeuronStableDiffusionXLImg2ImgPipelineMixin(StableDiffusionXLPipelineMixin
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = guidance_scale > 1.0 and (self.dynamic_batch_size or len(self.device_ids) == 2)
+        do_classifier_free_guidance = guidance_scale > 1.0 and (
+            self.dynamic_batch_size or self.data_parallel_mode == "unet"
+        )
 
         # 3. Encode input prompt
-        text_encoder_lora_scale = (
-            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
-        )
+        if cross_attention_kwargs is not None and cross_attention_kwargs.get("scale", None) is not None:
+            logger.warning(
+                "Lora scale need to be fused with model weights during the compilation. The scale passed through the pipeline during inference will be ignored."
+            )
+        text_encoder_lora_scale = None
         (
             prompt_embeds,
             negative_prompt_embeds,
@@ -505,9 +509,6 @@ class NeuronStableDiffusionXLImg2ImgPipelineMixin(StableDiffusionXLPipelineMixin
             image = self.watermark.apply_watermark(image)
 
         image = self.image_processor.postprocess(image, output_type=output_type)
-
-        # Offload all models
-        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (image,)

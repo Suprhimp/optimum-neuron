@@ -33,6 +33,8 @@ logger = logging.getLogger(__name__)
 
 
 class NeuronStableDiffusionInpaintPipelineMixin(StableDiffusionPipelineMixin, StableDiffusionInpaintPipeline):
+    prepare_latents = StableDiffusionInpaintPipeline.prepare_latents
+
     # Adapted from https://github.com/huggingface/diffusers/blob/v0.21.2/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_inpaint.py#L629
     def _encode_vae_image(
         self, image: torch.Tensor, generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None
@@ -153,7 +155,7 @@ class NeuronStableDiffusionInpaintPipelineMixin(StableDiffusionPipelineMixin, St
         >>> compiler_args = {"auto_cast": "matmul", "auto_cast_type": "bf16"}
         >>> input_shapes = {"batch_size": 1, "height": 1024, "width": 1024}
         >>> pipeline = NeuronStableDiffusionInpaintPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-inpainting", export=True, **compiler_args, **input_shapes, device_ids=[0, 1])
+        ...     "runwayml/stable-diffusion-inpainting", export=True, **compiler_args, **input_shapes,
         ... )
         >>> pipeline.save_pretrained("sd_inpaint/")
 
@@ -183,6 +185,8 @@ class NeuronStableDiffusionInpaintPipelineMixin(StableDiffusionPipelineMixin, St
         # 1. Check inputs
         self.check_inputs(
             prompt,
+            image,
+            mask_image,
             height,
             width,
             strength,
@@ -205,12 +209,16 @@ class NeuronStableDiffusionInpaintPipelineMixin(StableDiffusionPipelineMixin, St
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = guidance_scale > 1.0 and (self.dynamic_batch_size or len(self.device_ids) == 2)
+        do_classifier_free_guidance = guidance_scale > 1.0 and (
+            self.dynamic_batch_size or self.data_parallel_mode == "unet"
+        )
 
         # 3. Encode input prompt
-        text_encoder_lora_scale = (
-            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
-        )
+        if cross_attention_kwargs is not None and cross_attention_kwargs.get("scale", None) is not None:
+            logger.warning(
+                "Lora scale need to be fused with model weights during the compilation. The scale passed through the pipeline during inference will be ignored."
+            )
+        text_encoder_lora_scale = None
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             num_images_per_prompt,
@@ -387,9 +395,6 @@ class NeuronStableDiffusionInpaintPipelineMixin(StableDiffusionPipelineMixin, St
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
-
-        # Offload all models
-        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (image, has_nsfw_concept)

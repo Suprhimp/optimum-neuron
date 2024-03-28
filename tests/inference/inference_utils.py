@@ -13,15 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import shutil
 import tempfile
 import unittest
 from io import BytesIO
 from typing import Dict
 
+import huggingface_hub
 import requests
-from huggingface_hub import HfFolder
 from PIL import Image
 from transformers import set_seed
 
@@ -34,12 +33,13 @@ MODEL_NAMES = {
     "bert": "hf-internal-testing/tiny-random-BertModel",
     "camembert": "hf-internal-testing/tiny-random-camembert",
     "convbert": "hf-internal-testing/tiny-random-ConvBertModel",
-    # "deberta": "hf-internal-testing/tiny-random-DebertaModel",  # Failed for INF1: 'XSoftmax'
-    # "deberta-v2": "hf-internal-testing/tiny-random-DebertaV2Model",  # Failed for INF1: 'XSoftmax'
+    "deberta": "hf-internal-testing/tiny-random-DebertaModel",  # Failed for INF1: 'XSoftmax'
+    "deberta-v2": "hf-internal-testing/tiny-random-DebertaV2Model",  # Failed for INF1: 'XSoftmax'
     "distilbert": "hf-internal-testing/tiny-random-DistilBertModel",
     "electra": "hf-internal-testing/tiny-random-ElectraModel",
     "flaubert": "flaubert/flaubert_small_cased",
     "gpt2": "hf-internal-testing/tiny-random-gpt2",
+    "latent-consistency": "echarlaix/tiny-random-latent-consistency",
     "mobilebert": "hf-internal-testing/tiny-random-MobileBertModel",
     "mpnet": "hf-internal-testing/tiny-random-MPNetModel",
     "roberta": "hf-internal-testing/tiny-random-RobertaModel",
@@ -48,6 +48,15 @@ MODEL_NAMES = {
     "stable-diffusion-xl": "echarlaix/tiny-random-stable-diffusion-xl",
     "xlm": "hf-internal-testing/tiny-random-XLMModel",
     "xlm-roberta": "hf-internal-testing/tiny-xlm-roberta",
+}
+
+LORA_WEIGHTS_TINY = {
+    "stable-diffusion": ("Jingya/tiny-stable-diffusion-lora-64", "pytorch_lora_weights.safetensors", "pokemon"),
+}
+
+SENTENCE_TRANSFORMERS_MODEL_NAMES = {
+    "transformer": "sentence-transformers/all-MiniLM-L6-v2",
+    "clip": "sentence-transformers/clip-ViT-B-32",
 }
 
 
@@ -59,13 +68,8 @@ class NeuronModelIntegrationTestMixin(unittest.TestCase):
     STATIC_INPUTS_SHAPES = {}
 
     @classmethod
-    def setUpClass(cls) -> None:
-        if os.environ.get("HF_TOKEN_OPTIMUM_NEURON_CI", None) is not None:
-            token = os.environ.get("HF_TOKEN_OPTIMUM_NEURON_CI")
-            HfFolder.save_token(token)
-        else:
-            raise RuntimeError("Please specify the token via the HF_TOKEN_OPTIMUM_NEURON_CI environment variable.")
-        cls._token = HfFolder.get_token()
+    def setUpClass(cls):
+        cls._token = huggingface_hub.get_token()
 
         model_name = cls.MODEL_ID.split("/")[-1]
         model_dir = tempfile.mkdtemp(prefix=f"{model_name}_")
@@ -80,9 +84,7 @@ class NeuronModelIntegrationTestMixin(unittest.TestCase):
         neuron_model.push_to_hub(model_dir, repository_id=cls.neuron_model_id, use_auth_token=cls._token)
 
     @classmethod
-    def tearDownClass(cls) -> None:
-        if cls._token is not None:
-            HfFolder.save_token(cls._token)
+    def tearDownClass(cls):
         if cls.local_model_path is not None:
             shutil.rmtree(cls.local_model_path)
 
@@ -110,9 +112,13 @@ class NeuronModelTestMixin(unittest.TestCase):
             model_args.pop("model_arch")
             model_args.pop("dynamic_batch_size", None)
 
-            model_id = (
-                self.ARCH_MODEL_MAP[model_arch] if model_arch in self.ARCH_MODEL_MAP else MODEL_NAMES[model_arch]
-            )
+            if model_arch in self.ARCH_MODEL_MAP:
+                model_id = self.ARCH_MODEL_MAP[model_arch]
+            elif model_arch in SENTENCE_TRANSFORMERS_MODEL_NAMES:
+                model_id = SENTENCE_TRANSFORMERS_MODEL_NAMES[model_arch]
+            else:
+                model_id = MODEL_NAMES[model_arch]
+
             set_seed(SEED)
             neuron_model = self.NEURON_MODEL_CLASS.from_pretrained(
                 model_id, **model_args, export=True, dynamic_batch_size=dynamic_batch_size, **self.STATIC_INPUTS_SHAPES

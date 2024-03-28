@@ -21,7 +21,6 @@ import torch
 from diffusers import StableDiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import rescale_noise_cfg
-from diffusers.utils.torch_utils import randn_tensor
 
 from .pipeline_utils import StableDiffusionPipelineMixin
 
@@ -30,24 +29,6 @@ logger = logging.getLogger(__name__)
 
 
 class NeuronStableDiffusionPipelineMixin(StableDiffusionPipelineMixin, StableDiffusionPipeline):
-    # Adapted from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
-
-        if latents is None:
-            latents = randn_tensor(shape, generator=generator, dtype=dtype)
-        elif latents.shape != shape:
-            raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
-
-        # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
-        return latents
-
     # Adapted from https://github.com/huggingface/diffusers/blob/v0.18.2/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion.py#L566
     def __call__(
         self,
@@ -175,12 +156,16 @@ class NeuronStableDiffusionPipelineMixin(StableDiffusionPipelineMixin, StableDif
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = guidance_scale > 1.0 and (self.dynamic_batch_size or len(self.device_ids) == 2)
+        do_classifier_free_guidance = guidance_scale > 1.0 and (
+            self.dynamic_batch_size or self.data_parallel_mode == "unet"
+        )
 
         # 3. Encode input prompt
-        text_encoder_lora_scale = (
-            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
-        )
+        if cross_attention_kwargs is not None and cross_attention_kwargs.get("scale", None) is not None:
+            logger.warning(
+                "Lora scale need to be fused with model weights during the compilation. The scale passed through the pipeline during inference will be ignored."
+            )
+        text_encoder_lora_scale = None
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             num_images_per_prompt,

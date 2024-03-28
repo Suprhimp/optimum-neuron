@@ -17,17 +17,19 @@
 import copy
 import os
 from collections import OrderedDict
-from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import torch
 from transformers import PretrainedConfig
 
 from ...neuron.utils import (
+    DECODER_NAME,
     DIFFUSION_MODEL_TEXT_ENCODER_2_NAME,
     DIFFUSION_MODEL_TEXT_ENCODER_NAME,
     DIFFUSION_MODEL_UNET_NAME,
     DIFFUSION_MODEL_VAE_DECODER_NAME,
     DIFFUSION_MODEL_VAE_ENCODER_NAME,
+    ENCODER_NAME,
     get_attention_scores_sd,
     get_attention_scores_sdxl,
 )
@@ -50,6 +52,7 @@ if is_diffusers_available():
             f"We found an older version of diffusers {_diffusers_version} but we require diffusers to be >= {DIFFUSERS_MINIMUM_VERSION}. "
             "Please update diffusers by running `pip install --upgrade diffusers`"
         )
+    from diffusers import UNet2DConditionModel
     from diffusers.models.attention_processor import (
         Attention,
         AttnAddedKVProcessor,
@@ -64,7 +67,7 @@ if is_diffusers_available():
 if TYPE_CHECKING:
     from transformers.modeling_utils import PreTrainedModel
 
-    from .base import NeuronConfig
+    from .base import NeuronDefaultConfig
 
     if is_diffusers_available():
         from diffusers import ModelMixin, StableDiffusionPipeline, StableDiffusionXLImg2ImgPipeline
@@ -132,7 +135,11 @@ def get_stable_diffusion_models_for_export(
     vae_encoder_input_shapes: Dict[str, int],
     vae_decoder_input_shapes: Dict[str, int],
     dynamic_batch_size: Optional[bool] = False,
-) -> Dict[str, Tuple[Union["PreTrainedModel", "ModelMixin"], "NeuronConfig"]]:
+    lora_model_ids: Optional[List[str]] = None,
+    lora_weight_names: Optional[List[str]] = None,
+    lora_adapter_names: Optional[List[str]] = None,
+    lora_scales: Optional[List[float]] = None,
+) -> Dict[str, Tuple[Union["PreTrainedModel", "ModelMixin"], "NeuronDefaultConfig"]]:
     """
     Returns the components of a Stable Diffusion model and their subsequent neuron configs.
     These components are chosen because they represent the bulk of the compute in the pipeline,
@@ -154,18 +161,37 @@ def get_stable_diffusion_models_for_export(
             Static shapes used for compiling vae decoder.
         dynamic_batch_size (`bool`, defaults to `False`):
             Whether the Neuron compiled model supports dynamic batch size.
+        lora_model_ids (`Optional[List[str]]`, defaults to `None`):
+            List of model ids (eg. `ostris/super-cereal-sdxl-lora`) of pretrained lora models hosted on the Hub or paths to local directories containing the lora weights.
+        lora_weight_names (`Optional[List[str]]`, defaults to `None`):
+            List of lora weights file names.
+        lora_adapter_names (`Optional[List[str]]`, defaults to `None`):
+            List of adapter names to be used for referencing the loaded adapter models.
+        lora_scales (`Optional[List[float]]`, defaults to `None`):
+            List of scaling factors for lora adapters.
 
     Returns:
-        `Dict[str, Tuple[Union[`PreTrainedModel`, `ModelMixin`], `NeuronConfig`]: A Dict containing the model and
+        `Dict[str, Tuple[Union[`PreTrainedModel`, `ModelMixin`], `NeuronDefaultConfig`]`: A Dict containing the model and
         Neuron configs for the different components of the model.
     """
-    models_for_export = _get_submodels_for_export_stable_diffusion(pipeline=pipeline, task=task)
+    models_for_export = _get_submodels_for_export_stable_diffusion(
+        pipeline=pipeline,
+        task=task,
+        lora_model_ids=lora_model_ids,
+        lora_weight_names=lora_weight_names,
+        lora_adapter_names=lora_adapter_names,
+        lora_scales=lora_scales,
+    )
+    library_name = "diffusers"
 
     # Text encoders
     if DIFFUSION_MODEL_TEXT_ENCODER_NAME in models_for_export:
         text_encoder = models_for_export[DIFFUSION_MODEL_TEXT_ENCODER_NAME]
         text_encoder_config_constructor = TasksManager.get_exporter_config_constructor(
-            model=text_encoder, exporter="neuron", task="feature-extraction"
+            model=text_encoder,
+            exporter="neuron",
+            task="feature-extraction",
+            library_name=library_name,
         )
         text_encoder_neuron_config = text_encoder_config_constructor(
             text_encoder.config,
@@ -182,6 +208,7 @@ def get_stable_diffusion_models_for_export(
             exporter="neuron",
             task="feature-extraction",
             model_type="clip-text-with-projection",
+            library_name=library_name,
         )
         text_encoder_neuron_config_2 = text_encoder_config_constructor_2(
             text_encoder_2.config,
@@ -194,7 +221,11 @@ def get_stable_diffusion_models_for_export(
     # U-NET
     unet = models_for_export[DIFFUSION_MODEL_UNET_NAME]
     unet_neuron_config_constructor = TasksManager.get_exporter_config_constructor(
-        model=unet, exporter="neuron", task="semantic-segmentation", model_type="unet"
+        model=unet,
+        exporter="neuron",
+        task="semantic-segmentation",
+        model_type="unet",
+        library_name=library_name,
     )
     unet_neuron_config = unet_neuron_config_constructor(
         unet.config,
@@ -202,6 +233,8 @@ def get_stable_diffusion_models_for_export(
         dynamic_batch_size=dynamic_batch_size,
         **unet_input_shapes,
     )
+    if task == "stable-diffusion-xl":
+        unet_neuron_config.is_sdxl = True
     models_for_export[DIFFUSION_MODEL_UNET_NAME] = (unet, unet_neuron_config)
 
     # VAE Encoder
@@ -211,6 +244,7 @@ def get_stable_diffusion_models_for_export(
         exporter="neuron",
         task="semantic-segmentation",
         model_type="vae-encoder",
+        library_name=library_name,
     )
     vae_encoder_neuron_config = vae_encoder_config_constructor(
         vae_encoder.config,
@@ -227,6 +261,7 @@ def get_stable_diffusion_models_for_export(
         exporter="neuron",
         task="semantic-segmentation",
         model_type="vae-decoder",
+        library_name=library_name,
     )
     vae_decoder_neuron_config = vae_decoder_config_constructor(
         vae_decoder.config,
@@ -239,19 +274,57 @@ def get_stable_diffusion_models_for_export(
     return models_for_export
 
 
+def _load_lora_weights_to_pipeline(
+    pipeline: Union["StableDiffusionPipeline", "StableDiffusionXLImg2ImgPipeline"],
+    lora_model_ids: Optional[List[str]] = None,
+    weight_names: Optional[List[str]] = None,
+    adapter_names: Optional[List[str]] = None,
+    lora_scales: Optional[List[float]] = None,
+):
+    if lora_model_ids and weight_names:
+        if len(lora_model_ids) == 1:
+            pipeline.load_lora_weights(lora_model_ids[0], weight_name=weight_names[0])
+            # For tracing the lora weights, we need to use PEFT to fuse adapters directly into the model weights. It won't work by passing the lora scale to the Neuron pipeline during the inference.
+            pipeline.fuse_lora(lora_scale=lora_scales[0])
+        elif len(lora_model_ids) > 1:
+            if not len(lora_model_ids) == len(weight_names) == len(adapter_names):
+                raise ValueError(
+                    f"weight_name and lora_scale are required to fuse more than one lora. You have {len(lora_model_ids)} lora models to fuse, but you have {len(weight_names)} lora weight names and {len(adapter_names)} adapter names."
+                )
+            for model_id, weight_name, adapter_name in zip(lora_model_ids, weight_names, adapter_names):
+                pipeline.load_lora_weights(model_id, weight_name=weight_name, adapter_name=adapter_name)
+
+            if lora_scales:
+                pipeline.set_adapters(adapter_names, adapter_weights=lora_scales)
+            pipeline.fuse_lora()
+
+
 def _get_submodels_for_export_stable_diffusion(
     pipeline: Union["StableDiffusionPipeline", "StableDiffusionXLImg2ImgPipeline"],
     task: str,
+    lora_model_ids: Optional[List[str]] = None,
+    lora_weight_names: Optional[List[str]] = None,
+    lora_adapter_names: Optional[List[str]] = None,
+    lora_scales: Optional[List[float]] = None,
 ) -> Dict[str, Union["PreTrainedModel", "ModelMixin"]]:
     """
     Returns the components of a Stable Diffusion model.
     """
     is_sdxl = "xl" in task
 
-    models_for_export = []
-    projection_dim = (
-        pipeline.text_encoder_2.config.projection_dim if is_sdxl else pipeline.text_encoder.config.projection_dim
+    _load_lora_weights_to_pipeline(
+        pipeline=pipeline,
+        lora_model_ids=lora_model_ids,
+        weight_names=lora_weight_names,
+        adapter_names=lora_adapter_names,
+        lora_scales=lora_scales,
     )
+
+    models_for_export = []
+    if hasattr(pipeline, "text_encoder_2"):
+        projection_dim = pipeline.text_encoder_2.config.projection_dim
+    else:
+        projection_dim = pipeline.text_encoder.config.projection_dim
 
     # Text encoders
     if pipeline.text_encoder is not None:
@@ -320,3 +393,93 @@ def override_diffusers_2_0_attn_processors(model):
             elif isinstance(submodule.processor, AttnAddedKVProcessor2_0):
                 submodule.set_processor(AttnAddedKVProcessor())
     return model
+
+
+def check_mandatory_input_shapes(neuron_config_constructor, task, input_shapes):
+    mandatory_shapes = neuron_config_constructor.func.get_mandatory_axes_for_task(task)
+    for name in mandatory_shapes:
+        if input_shapes.get(name, None) is None:
+            raise AttributeError(
+                f"Cannot find the value of `{name}` which is mandatory for exporting the model to the neuron format, please set the value explicitly."
+            )
+
+
+def replace_stable_diffusion_submodels(pipeline, submodels):
+    if submodels is not None:
+        unet_id = submodels.pop("unet", None)
+        if unet_id is not None:
+            unet = UNet2DConditionModel.from_pretrained(unet_id)
+            pipeline.unet = unet
+
+    return pipeline
+
+
+def get_encoder_decoder_models_for_export(
+    model: "PreTrainedModel",
+    task: str,
+    input_shapes: Dict[str, int],
+    dynamic_batch_size: Optional[bool] = False,
+    output_attentions: bool = False,
+    output_hidden_states: bool = False,
+) -> Dict[str, Tuple["PreTrainedModel", "NeuronDefaultConfig"]]:
+    """
+    Returns the components of an encoder-decoder model and their subsequent neuron configs.
+    The encoder includes the compute of encoder hidden states and the initialization of KV
+    cache. The decoder the autoprogressive process of generating tokens, which takes past
+    key values as inputs to save the compute.
+
+    Args:
+        model ("PreTrainedModel"):
+            The model to export.
+        input_shapes (`Dict[str, int]`):
+            Static shapes used for compiling the encoder and the decoder.
+        dynamic_batch_size (`bool`, defaults to `False`):
+            Whether the Neuron compiled model supports dynamic batch size.
+        output_attentions (`bool`, defaults to `False`):
+            Whether or not for the traced model to return the attentions tensors of all attention layers.
+        output_hidden_states (`bool`, defaults to `False`):
+            Whether or not for the traced model to return the hidden states of all layers.
+
+    Returns:
+        `Dict[str, Tuple["PreTrainedModel", "NeuronDefaultConfig"]]`: A Dict containing the model and
+        Neuron configs for the different components of the model.
+    """
+    models_for_export = {}
+
+    # Encoder
+    model_type = getattr(model.config, "model_type") + "-encoder"
+    encoder_config_constructor = TasksManager.get_exporter_config_constructor(
+        exporter="neuron",
+        model_type=model_type,
+        task=task,
+        library_name="transformers",
+    )
+    check_mandatory_input_shapes(encoder_config_constructor, task, input_shapes)
+    encoder_neuron_config = encoder_config_constructor(
+        config=model.config,
+        task=task,
+        dynamic_batch_size=dynamic_batch_size,
+        **input_shapes,
+    )
+    models_for_export[ENCODER_NAME] = (model, encoder_neuron_config)
+
+    # Decoder
+    model_type = getattr(model.config, "model_type") + "-decoder"
+    decoder_config_constructor = TasksManager.get_exporter_config_constructor(
+        exporter="neuron",
+        model_type=model_type,
+        task=task,
+        library_name="transformers",
+    )
+    check_mandatory_input_shapes(encoder_config_constructor, task, input_shapes)
+    decoder_neuron_config = decoder_config_constructor(
+        config=model.config,
+        task=task,
+        dynamic_batch_size=dynamic_batch_size,
+        output_attentions=output_attentions,
+        output_hidden_states=output_hidden_states,
+        **input_shapes,
+    )
+    models_for_export[DECODER_NAME] = (model, decoder_neuron_config)
+
+    return models_for_export
