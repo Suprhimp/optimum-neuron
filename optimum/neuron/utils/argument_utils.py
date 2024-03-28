@@ -18,7 +18,7 @@ import os
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
-import logging
+from ...utils import logging
 
 
 if TYPE_CHECKING:
