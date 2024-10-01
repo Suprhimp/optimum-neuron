@@ -12,7 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 import logging
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 from diffusers.loaders import LoraLoaderMixin, TextualInversionLoaderMixin
@@ -49,6 +49,43 @@ class DiffusionBasePipelineMixin:
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
         return image, has_nsfw_concept
+        
+
+    @property
+    def components(self) -> Dict[str, Any]:
+        r"""
+        The `self.components` property can be useful to run different pipelines with the same weights and
+        configurations without reallocating additional memory.
+
+        Returns (`dict`):
+            A dictionary containing all the modules needed to initialize the pipeline.
+
+        Examples:
+
+        ```py
+        >>> from diffusers import (
+        ...     StableDiffusionPipeline,
+        ...     StableDiffusionImg2ImgPipeline,
+        ...     StableDiffusionInpaintPipeline,
+        ... )
+
+        >>> text2img = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> img2img = StableDiffusionImg2ImgPipeline(**text2img.components)
+        >>> inpaint = StableDiffusionInpaintPipeline(**text2img.components)
+        ```
+        """
+        expected_modules, optional_parameters = self._get_signature_keys(self)
+        components = {
+            k: getattr(self, k) for k in self.config.keys() if not k.startswith("_") and k not in optional_parameters
+        }
+
+        if set(components.keys()) != expected_modules:
+            raise ValueError(
+                f"{self} has been incorrectly initialized or {self.__class__} is incorrectly implemented. Expected"
+                f" {expected_modules} to be defined, but {components.keys()} are defined."
+            )
+
+        return components
 
 
 class StableDiffusionPipelineMixin(DiffusionBasePipelineMixin):
